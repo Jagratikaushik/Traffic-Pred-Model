@@ -1,68 +1,66 @@
 import numpy as np
 from tensorflow.keras.models import load_model
 from sklearn.metrics import mean_squared_error
+import os
 
-def predict_next_state(model_path, input_sequence):
+def predict_all_episodes(model_path, folder_path):
     """
-    Predict the next state using a trained LSTM model.
+    Predict all testing samples across all episodes and calculate total MSE.
     
     Args:
         model_path (str): Path to the trained LSTM model file.
-        input_sequence (np.array): Input sequence of shape (1, sequence_length, num_features).
-    
-    Returns:
-        predicted_state: Predicted state as a numpy array.
+        folder_path (str): Path to the folder containing preprocessed test datasets.
     """
-    # Load the trained model
+    # Load the trained LSTM model
     model = load_model(model_path)
 
-    # Predict the next state
-    predicted_state = model.predict(input_sequence)
+    # Get a list of all test dataset files in the folder
+    test_files = [f for f in os.listdir(folder_path) if f.endswith("_X_test.npy")]
     
-    return predicted_state
+    print(f"Found {len(test_files)} test datasets: {test_files}")
 
-if __name__ == "__main__":
-    # Load test data
-    try:
-        X_test = np.load("X_test.npy")  # Input sequences for testing
-        y_test = np.load("y_test.npy")  # Actual target states for testing
-    except FileNotFoundError:
-        print("Test data files 'X_test.npy' or 'y_test.npy' not found! Please run preprocessing first.")
-        exit()
+    total_predicted_states = []
+    total_actual_states = []
 
-    # Initialize lists to store predicted and actual states
-    all_predicted_states = []
-    all_actual_states = []
+    # Loop through each test dataset file
+    for test_file in test_files:
+        X_test_file = os.path.join(folder_path, test_file)
+        y_test_file = X_test_file.replace("_X_test.npy", "_y_test.npy")
 
-    # Loop through all test samples
-    for i in range(len(X_test)):
-        # Reshape input sequence for prediction
-        input_sequence = X_test[i].reshape(1, X_test.shape[1], X_test.shape[2])
+        try:
+            # Load test data for this episode
+            X_test = np.load(X_test_file)
+            y_test = np.load(y_test_file)
+        except FileNotFoundError:
+            print(f"Test data files not found for {test_file}. Skipping...")
+            continue
 
-        # Predict next state
-        predicted_state = predict_next_state("state_predictor_model.h5", input_sequence)
+        print(f"Processing {test_file}...")
 
-        # Apply threshold to convert predictions to binary values (0 or 1)
-        binary_predicted_state = (predicted_state >= 0.5).astype(int)  # Threshold at 0.5
+        predicted_states = []
+        
+        # Predict states for all test samples in this episode
+        for i in range(len(X_test)):
+            input_sequence = X_test[i].reshape(1, X_test.shape[1], X_test.shape[2])  # Reshape for LSTM input
+            predicted_state = model.predict(input_sequence)
+            predicted_states.append(predicted_state.flatten())
 
-        # Get actual state and convert it to binary values
-        actual_state = y_test[i]
-        binary_actual_state = (actual_state >= 0.5).astype(int)  # Threshold at 0.5
+        predicted_states = np.array(predicted_states)
 
-        # Append predicted and actual states for MSE calculation later
-        all_predicted_states.append(predicted_state.flatten())
-        all_actual_states.append(actual_state.flatten())
-
-        # Print predicted and actual states
-        print(f"Test Sample {i + 1}:")
-        print(f"Predicted State (Binary): {binary_predicted_state.flatten()}")
-        print(f"Actual State (Binary): {binary_actual_state}")
-        print("-" * 50)
+        # Append predictions and actual states to total lists
+        total_predicted_states.extend(predicted_states)
+        total_actual_states.extend(y_test)
 
     # Convert lists to NumPy arrays for MSE calculation
-    all_predicted_states = np.array(all_predicted_states)
-    all_actual_states = np.array(all_actual_states)
+    total_predicted_states = np.array(total_predicted_states)
+    total_actual_states = np.array(total_actual_states)
 
-    # Calculate Mean Squared Error (MSE)
-    mse = mean_squared_error(all_actual_states, all_predicted_states)
-    print("\nMean Squared Error (MSE):", mse)
+    # Calculate Mean Squared Error (MSE) across all episodes
+    mse = mean_squared_error(total_actual_states, total_predicted_states)
+    print("\nTotal Mean Squared Error (MSE) across all episodes:", mse)
+
+if __name__ == "__main__":
+    model_path = "state_predictor_model.h5"  # Replace with your trained model path
+    folder_path = "."  # Replace with your folder path containing preprocessed datasets (.npy files)
+    
+    predict_all_episodes(model_path, folder_path)

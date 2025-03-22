@@ -48,8 +48,11 @@ class Simulation:
         traci.start(self._sumo_cmd)
         print("Simulating...")
 
-        # Initialize CSV file for saving states
-        csv_file_path = f"states_episode_{episode}.csv"
+        # Create a folder named 'csv' to store episode CSV files
+        os.makedirs('csv', exist_ok=True)
+
+        # Save each episode's CSV file in the 'csv' folder
+        csv_file_path = os.path.join('csv', f"states_episode_{episode}.csv")
         with open(csv_file_path, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["timestamp", "states"])  # Write header
